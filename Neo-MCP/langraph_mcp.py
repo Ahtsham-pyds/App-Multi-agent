@@ -8,10 +8,10 @@ from langchain_core.messages.utils import count_tokens_approximately, trim_messa
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.checkpoint.memory import InMemorySaver
-#from langgraph.prebuilt import create_react_agent
-from langchain.agents import create_agent
-#from langgraph.prebuilt.chat_agent_executor import AgentState
-from langchain.agents import AgentState
+from langgraph.prebuilt import create_react_agent
+#from langchain.agents import create_agent
+from langgraph.prebuilt.chat_agent_executor import AgentState
+#from langchain.agents import AgentState
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -22,6 +22,8 @@ if load_dotenv():
     print("Loaded .env file")
 else:
     print("No .env file found")
+    
+os.environ["OPENAI_API_KEY"] = os.getenv("OPEN_API_KEY")  
     
     
 def find_movie_recommendations(
@@ -91,22 +93,10 @@ return_direct=False,  #                       -> Whether to return the raw resul
 )
     
     
-    # The Neo4j Cypher MCP server will be used to get the database schema and execute Cypher queries
-# neo4j_cypher_mcp = StdioServerParameters(
-#     command="uvx",
-#     args=["mcp-neo4j-cypher@0.3.0", "--transport", "stdio"],
-#     env={
-#         "NEO4J_URI": os.getenv("NEO4J_URI"),
-#         "NEO4J_USERNAME": os.getenv("NEO4J_USERNAME"),
-#         "NEO4J_PASSWORD": os.getenv("NEO4J_PASSWORD"),
-#         "NEO4J_DATABASE": os.getenv("NEO4J_DATABASE"),
-#     },
-# )
-
-import sys
+    #The Neo4j Cypher MCP server will be used to get the database schema and execute Cypher queries
 neo4j_cypher_mcp = StdioServerParameters(
-    command=sys.executable,
-    args=["-m", "neo4j_cypher_mcp"],
+    command="uvx",
+    args=["mcp-neo4j-cypher", "--transport", "stdio"],
     env={
         "NEO4J_URI": os.getenv("NEO4J_URI"),
         "NEO4J_USERNAME": os.getenv("NEO4J_USERNAME"),
@@ -114,6 +104,18 @@ neo4j_cypher_mcp = StdioServerParameters(
         "NEO4J_DATABASE": os.getenv("NEO4J_DATABASE"),
     },
 )
+
+# import sys
+# neo4j_cypher_mcp = StdioServerParameters(
+#     command=sys.executable,
+#     args=["-m", "mcp-neo4j-cypher"],
+#     env={
+#         "NEO4J_URI": os.getenv("NEO4J_URI"),
+#         "NEO4J_USERNAME": os.getenv("NEO4J_USERNAME"),
+#         "NEO4J_PASSWORD": os.getenv("NEO4J_PASSWORD"),
+#         "NEO4J_DATABASE": os.getenv("NEO4J_DATABASE"),
+#     },
+# )
 
 
 CONFIG = {"configurable": {"thread_id": "1"}}
@@ -130,7 +132,7 @@ As a well respected movie expert:
 * Ensure that you provide detailed responses with citations to the underlying data"""
 
 
-def pre_model_hook(state: AgentState) -> dict[str, list[AnyMessage]]:
+def pre_model_hook1(state: AgentState) -> dict[str, list[AnyMessage]]:
     """
     This function will be called every time before the node that calls LLM.
 
@@ -152,7 +154,7 @@ def pre_model_hook(state: AgentState) -> dict[str, list[AnyMessage]]:
         state["messages"],
         strategy="last",
         token_counter=count_tokens_approximately,
-        max_tokens=30_000,
+        max_tokens=5000,
         start_on="human",
         end_on=("human", "tool"),
         include_system=True,  # -> We always want to include the system prompt in the context
@@ -209,22 +211,28 @@ async def main():
             mcp_tools = await load_mcp_tools(session)
 
             # We only need to get schema and execute read queries from the Cypher MCP server
-            allowed_tools = [
+            allowed_tools1 = [
                 tool for tool in mcp_tools if tool.name in {"get_neo4j_schema", "read_neo4j_cypher"}
             ]
 
             # We can also add non-mcp tools for our agent to use
-            allowed_tools.append(find_movie_recommendations_tool)
+            #allowed_tools = []
+            allowed_tools1.append(find_movie_recommendations_tool)
+            
+            
 
             # Create and run the agent
-            agent = create_agent(
-                "openai:gpt-4.1",  #              -> The model to use
-                allowed_tools,  #                 -> The tools to use
-                pre_model_hook=pre_model_hook,  # -> The function to call before the model is called
-                checkpointer=InMemorySaver(),  #  -> The checkpoint to use
-                prompt=SYSTEM_PROMPT,  #          -> The system prompt to use
+            agent = create_react_agent(
+                model="openai:gpt-4.1",  
+                tools = allowed_tools1,
+               # tools=allowed_tools1,
+               # state_schema=pre_model_hook1,
+                pre_model_hook=pre_model_hook1, 
+                checkpointer=InMemorySaver(), 
+                prompt=SYSTEM_PROMPT  #         
             )
-
+            #create_agent(model="openai:gpt-4.1", tools=allowed_tools, pre_model_hook=pre_model_hook,)
+           # create_agent(model="abc",allowed_tools=allowed_tools,checkpointer=check,pre_model_hook=pre_model_hook)
             # conversation loop
             print(
                 "\n===================================== Chat =====================================\n"

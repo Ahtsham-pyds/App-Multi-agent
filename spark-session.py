@@ -6,13 +6,14 @@ from pyspark.sql.window import Window
 import pandas as pd
 import traceback
 import os
+import FASTAPI
 
 spark = SparkSession.builder \
     .appName("ueh_flask_server") \
     .enableHiveSupport() \
     .getOrCreate()
 
-app = Flask(__name__)
+app = FASTAPI(__name__)
 PORT = os.getenv('CDSW_APP_PORT', '8090')
 
 def convert_temporal_columns(df):
@@ -30,7 +31,7 @@ def apply_pagination(df, page, page_size):
              .filter(F.col("_rn").between(offset + 1, offset + page_size)) \
              .drop("_rn")
 
-@app.route("/query", methods=["GET", "POST"])
+@app.get("/query")
 def query():
     try:
         # Extract SQL query
@@ -64,7 +65,7 @@ def query():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/")
+@app.get("/")
 def health():
     return jsonify({"status": "ok", "message": "UEH Spark API running!"})
 
